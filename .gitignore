@@ -1,0 +1,29 @@
+# .gitignore file for a Python project with virtual environment
+
+# Python virtual environment
+venv/
+.venv
+
+# OS environment
+.env
+
+# Compiled Python files
+*.pyc
+
+# Python cache
+__pycache__/
+
+# IDE specific files
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# Dependency directories
+env/
+lib/
+include/
+
+# history
+.history

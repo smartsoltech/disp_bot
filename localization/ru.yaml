@@ -1,0 +1,6 @@
+welcome: "Добро пожаловать в нашего бота!"
+language_changed: "Язык был успешно изменен."
+new_issues: "Новые заявки"
+in_progress: "В работе"
+resolved: "Устранено"
+select_issue: "Выберите заявку:"
