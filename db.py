@@ -1,15 +1,12 @@
-from sqlalchemy import create_engine, Column, Integer, String, Boolean, ForeignKey, engine
+from sqlalchemy import create_engine, Column, Integer, String, Boolean, ForeignKey, Enum
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
-from sqlalchemy.dialects.postgresql import ENUM as PENUM
-import sqlalchemy
-import openpyxl
-import databases
+
 import enum
 
-DATABASE_URL = "sqlite+aiosqlite:///db/test.db"
-database = databases.Database(DATABASE_URL)
-
+DATABASE_URL = "sqlite:///db/test.db"
+engine = create_engine(DATABASE_URL)
+Session = sessionmaker(bind=engine)
 Base = declarative_base()
 
 class User(Base):
@@ -26,7 +23,7 @@ class Issuer(Base):
     phone = Column(String)
     telegram_id = Column(String)
 
-class IssueStatus(str, enum.Enum):
+class IssueStatus(enum.Enum):
     NEW = "Новый"
     IN_PROGRESS = "В работе"
     RESOLVED = "Устранено"
@@ -38,27 +35,59 @@ class Issue(Base):
     address = Column(String)
     location = Column(String)
     photo = Column(String)
-    status = Column(PENUM(IssueStatus), default=IssueStatus.NEW.name)
+    phone = Column(String)  # Добавлено поле для телефона
+    status = Column(Enum(IssueStatus), default=IssueStatus.NEW.name)
     issuer_id = Column(Integer, ForeignKey('issuers.id'))
     issuer = relationship('Issuer')
 
-# engine = sqlalchemy.create_engine(DATABASE_URL)
-# Base.metadata.create_all(engine)
+Base.metadata.create_all(engine)
 
-    
-async def init_db():
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-        
-async def get_issues_by_status(status):
-    query = sqlalchemy.select([Issue]).where(Issue.status == status)
-    return await database.fetch_all(query)
+def get_user_language(telegram_id):
+    session = Session()
+    user = session.query(User).filter_by(telegram_id=telegram_id).first()
+    session.close()
+    return user.language if user else 'en'
 
-async def update_issue_status(issue_id, new_status):
-    query = sqlalchemy.update(Issue).where(Issue.id == issue_id).values(status=new_status)
-    await database.execute(query)
+def get_issues_by_status(status):
+    session = Session()
+    issues = session.query(Issue).filter_by(status=status).all()
+    session.close()
+    return issues
 
-async def is_user_admin(telegram_id):
-    query = sqlalchemy.select([User]).where(User.telegram_id == str(telegram_id))
-    user = await database.fetch_one(query)
-    return user.admin if user else False
+def update_issue_status(issue_id, new_status):
+    session = Session()
+    issue = session.query(Issue).filter_by(id=issue_id).first()
+    if issue:
+        issue.status = new_status
+        session.commit()
+    session.close()
+
+def get_user_language(telegram_id):
+    session = Session()
+    user = session.query(User).filter_by(telegram_id=telegram_id).first()
+    session.close()
+    return user.language if user else 'en'
+
+def update_user_language(telegram_id, language):
+    session = Session()
+    user = session.query(User).filter_by(telegram_id=telegram_id).first()
+    if user:
+        user.language = language
+        session.commit()
+    session.close()
+
+def save_new_issue(issue_data, issuer_id):
+    session = Session()
+    # Создаем новую запись заявки
+    new_issue = Issue(
+        description=issue_data.get('description', ''),
+        address=issue_data.get('address', ''),
+        location=str(issue_data.get('location', '')),  # Преобразуем кортеж в строку
+        photo=issue_data.get('photo', ''),
+        phone=issue_data.get('phone', ''),
+        issuer=issuer_id,
+        status=IssueStatus.NEW
+    )
+    session.add(new_issue)
+    session.commit()
+    session.close()

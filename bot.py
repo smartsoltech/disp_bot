@@ -1,61 +1,80 @@
-import asyncio
-import logging
-import os
-import sys
-from aiogram.types import BotCommand
-from aiogram import Bot, Dispatcher, Router, types
-from aiogram.enums import ParseMode
-from aiogram.filters import CommandStart
-from aiogram.types import Message
-from aiogram.utils.markdown import hbold
+import telebot
 import db
 import func
+import os
 from dotenv import load_dotenv
 from icecream import ic
-
 load_dotenv()
 
 TOKEN = os.getenv("BOT_TOKEN")
-bot = Bot(TOKEN, parse_mode=ParseMode.HTML)
-router = Router()
+bot = telebot.TeleBot(TOKEN)
 
-@dp.message_handler(commands=['start'])
-async def start_message(message: types.Message):
-    user_lang = await db.get_user_language(message.from_user.id)
+@bot.message_handler(commands=['start'])
+def start_message(message):
+    user_lang = db.get_user_language(message.from_user.id)
     welcome_text = func.get_text(user_lang, 'welcome')
-    await message.answer(welcome_text)
+    bot.send_message(message.chat.id, welcome_text)
 
-@dp.message_handler(commands=['language'])
-async def change_language(message: types.Message):
-    # Реализация функции для изменения языка пользователя
-    pass
+@bot.message_handler(commands=['language'])
+def change_language(message):
+    markup = telebot.types.ReplyKeyboardMarkup(one_time_keyboard=True)
+    # Добавляем кнопки для выбора языка
+    markup.add('English', 'Русский', 'Қазақша')
 
-@dp.message_handler(lambda message: message.text in ["Новые заявки", "В работе", "Завершенные"])
-async def show_issues_by_status(message: types.Message):
+    msg = bot.send_message(message.chat.id, "Выберите язык / Choose language / Тілді таңдаңыз", reply_markup=markup)
+    bot.register_next_step_handler(msg, set_language)
+
+def set_language(message):
+    user_lang = message.text
+    # Обновляем язык пользователя в базе данных
+    db.update_user_language(message.from_user.id, user_lang)
+    bot.send_message(message.chat.id, "Язык изменен на " + user_lang)
+
+@bot.message_handler(commands=['new_issue'])
+def new_issue(message):
+    msg = bot.send_message(message.chat.id, "Опишите проблему:")
+    bot.register_next_step_handler(msg, process_issue_description)
+
+def process_issue_description(message):
+    issue = {'description': message.text}
+    msg = bot.send_message(message.chat.id, "Введите адрес:")
+    bot.register_next_step_handler(msg, process_issue_address, issue)
+
+def process_issue_address(message, issue):
+    issue['address'] = message.text
+    msg = bot.send_message(message.chat.id, "Отправьте фото (или пропустите этот шаг):")
+    bot.register_next_step_handler(msg, process_issue_photo, issue)
+
+def process_issue_photo(message, issue):
+    if message.content_type == 'photo':
+        photo = message.photo[-1].file_id
+        issue['photo'] = photo
+    msg = bot.send_message(message.chat.id, "Отправьте вашу геопозицию (или пропустите этот шаг):")
+    bot.register_next_step_handler(msg, process_issue_location, issue)
+
+def process_issue_location(message, issue):
+    if message.content_type == 'location':
+        location = message.location
+        issue['location'] = (location.latitude, location.longitude)
+    msg = bot.send_message(message.chat.id, "Введите контактный телефон:")
+    bot.register_next_step_handler(msg, process_issue_phone, issue)
+
+def process_issue_phone(message, issue):
+    issue['phone'] = message.text
+    # Сохраняем заявку в базу данных
+    ic(issue)
+    db.save_new_issue(issue, message.chat.id)
+    bot.send_message(message.chat.id, "Заявка создана.")
+
+
+
+@bot.message_handler(func=lambda message: message.text in ["Новые заявки", "В работе", "Завершенные"])
+def show_issues_by_status(message):
     status = db.IssueStatus.NEW if message.text == "Новые заявки" \
         else db.IssueStatus.IN_PROGRESS if message.text == "В работе" \
         else db.IssueStatus.RESOLVED
-    issues = await db.get_issues_by_status(status)
-    # Отображение заявок пользователю
-    pass
+    issues = db.get_issues_by_status(status)
+    for issue in issues:
+        bot.send_message(message.chat.id, f"Заявка {issue.id}: {issue.description}")
 
-@dp.callback_query_handler(lambda call: True)
-async def callback_query_handler(call: types.CallbackQuery):
-    # Обработка нажатий на кнопки инлайн-клавиатуры
-    pass
-
-async def on_startup(dp):
-    await db.database.connect()
-    await db.init_db()  # Инициализация базы данных
-
-async def on_shutdown(dp):
-    await db.database.disconnect()
-
-async def main():
-    # Инициализация Bot и Dispatcher
-    await dp.start_polling(bot, on_startup=on_startup, on_shutdown=on_shutdown)
-    
-    
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO, stream=sys.stdout)
-    asyncio.run(main())
+bot.polling()
