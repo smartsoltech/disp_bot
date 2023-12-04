@@ -12,6 +12,7 @@ bot = telebot.TeleBot(TOKEN)
 @bot.message_handler(commands=['start'])
 def start_message(message):
     user_lang = db.get_user_language(message.from_user.id)
+    ic(user_lang)
     welcome_text = func.get_text(user_lang, 'welcome')
     bot.send_message(message.chat.id, welcome_text)
 
@@ -67,6 +68,20 @@ def process_issue_phone(message, issue):
     bot.send_message(message.chat.id, "Заявка создана.")
 
 
+@bot.message_handler(commands=['view_issues'])
+def view_issues(message):
+    markup = telebot.types.ReplyKeyboardMarkup(one_time_keyboard=True)
+    for status in db.IssueStatus:
+        markup.add(status.value)
+    msg = bot.send_message(message.chat.id, "Выберите статус заявки:", reply_markup=markup)
+    bot.register_next_step_handler(msg, show_issues_by_status)
+
+def show_issues_by_status(message):
+    status = message.text
+    issues = db.get_issues_by_status(status)
+    response = '\n'.join([f"ID: {issue.id}, Описание: {issue.description}" for issue in issues])
+    bot.send_message(message.chat.id, response or "Заявки не найдены.")
+
 
 @bot.message_handler(func=lambda message: message.text in ["Новые заявки", "В работе", "Завершенные"])
 def show_issues_by_status(message):
@@ -76,5 +91,15 @@ def show_issues_by_status(message):
     issues = db.get_issues_by_status(status)
     for issue in issues:
         bot.send_message(message.chat.id, f"Заявка {issue.id}: {issue.description}")
+
+@bot.message_handler(commands=['export_issues'])
+def handle_export_issues(message):
+    filename = 'issues_export.xlsx'
+    func.export_issues_to_excel(filename)
+
+    # Отправляем файл в чат
+    with open(filename, 'rb') as file:
+        bot.send_document(message.chat.id, file)
+
 
 bot.polling()

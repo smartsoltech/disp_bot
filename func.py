@@ -1,7 +1,8 @@
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 import yaml
 import os
-
+from openpyxl import Workbook
+import db
 # Глобальный словарь для хранения языковых пакетов
 languages = {}
 
@@ -31,6 +32,32 @@ def generate_inline_keyboard(buttons):
         keyboard.add(InlineKeyboardButton(text=button['text'], callback_data=button['callback']))
     return keyboard
 
-# Инициализация языковых пакетов
-load_languages()
+
+
+def export_issues_to_excel(filename='issues_export.xlsx'):
+    issues = db.get_all_issues()  # Функция возвращает все заявки
+
+    # Создаем книгу Excel
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = 'Заявки'
+
+    # Заголовки для столбцов
+    columns = ['ID', 'Описание', 'Адрес', 'Статус', 'Телефон', 'Координаты']
+    sheet.append(columns)
+
+    # Добавляем данные
+    for issue in issues:
+        sheet.append([
+            issue.id, 
+            issue.description, 
+            issue.address, 
+            issue.status.value, 
+            issue.phone,
+            str(issue.location)  # Координаты в виде строки
+        ])
+
+    # Сохраняем файл
+    workbook.save(filename)
+
 

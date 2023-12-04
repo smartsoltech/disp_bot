@@ -1,7 +1,7 @@
 from sqlalchemy import create_engine, Column, Integer, String, Boolean, ForeignKey, Enum
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
-
+from icecream import ic
 import enum
 
 DATABASE_URL = "sqlite:///db/test.db"
@@ -76,18 +76,31 @@ def update_user_language(telegram_id, language):
         session.commit()
     session.close()
 
-def save_new_issue(issue_data, issuer_id):
+def save_new_issue(issue_data, chat_id):
     session = Session()
-    # Создаем новую запись заявки
+    # Находим или создаем нового заявителя
+    issuer = session.query(Issuer).filter_by(telegram_id=chat_id).first()
+    if not issuer:
+        issuer = Issuer(telegram_id=chat_id)
+        session.add(issuer)
+        session.commit()
+
+    # Создаем новую заявку
     new_issue = Issue(
         description=issue_data.get('description', ''),
         address=issue_data.get('address', ''),
-        location=str(issue_data.get('location', '')),  # Преобразуем кортеж в строку
+        location=str(issue_data.get('location', '')),
         photo=issue_data.get('photo', ''),
         phone=issue_data.get('phone', ''),
-        issuer=issuer_id,
-        status=IssueStatus.NEW
+        status=IssueStatus.NEW,
+        issuer_id=issuer.id
     )
     session.add(new_issue)
     session.commit()
     session.close()
+
+def get_all_issues():
+    session = Session()
+    issues = session.query(Issue).all()
+    session.close()
+    return issues
