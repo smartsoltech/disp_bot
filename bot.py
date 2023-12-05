@@ -82,15 +82,28 @@ def show_issues_by_status(message):
     response = '\n'.join([f"ID: {issue.id}, Описание: {issue.description}" for issue in issues])
     bot.send_message(message.chat.id, response or "Заявки не найдены.")
 
+def generate_yandex_map_link(location_str):
+    location = tuple(map(float, location_str.strip("()").split(", ")))
+    latitude, longitude = location
+    base_url = "https://yandex.ru/maps/?"
+    params = f"ll={longitude},{latitude}&z=12&l=map&pt={longitude},{latitude}"
+    return base_url + params
 
-@bot.message_handler(func=lambda message: message.text in ["Новые заявки", "В работе", "Завершенные"])
+@bot.message_handler(func=lambda message: message.text in ["Новый", "В работе", "Завершенные"])
 def show_issues_by_status(message):
-    status = db.IssueStatus.NEW if message.text == "Новые заявки" \
+    status = db.IssueStatus.NEW if message.text == "Новый" \
         else db.IssueStatus.IN_PROGRESS if message.text == "В работе" \
         else db.IssueStatus.RESOLVED
     issues = db.get_issues_by_status(status)
     for issue in issues:
         bot.send_message(message.chat.id, f"Заявка {issue.id}: {issue.description}")
+                # Проверяем, есть ли в заявке изображение
+        if issue.photo:
+            bot.send_photo(message.chat.id, issue.photo)
+                # Отправка ссылки на карту, если есть координаты
+        if issue.location:
+            map_link = generate_yandex_map_link(issue.location)
+            bot.send_message(message.chat.id, f"Местоположение: {map_link}")
 
 @bot.message_handler(commands=['export_issues'])
 def handle_export_issues(message):
