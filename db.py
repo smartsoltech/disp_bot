@@ -9,6 +9,8 @@ engine = create_engine(DATABASE_URL)
 Session = sessionmaker(bind=engine)
 Base = declarative_base()
 
+#пользователь
+
 class User(Base):
     __tablename__ = 'users'
     id = Column(Integer, primary_key=True)
@@ -16,6 +18,7 @@ class User(Base):
     admin = Column(Boolean)
     telegram_id = Column(String)
 
+#заявитель
 class Issuer(Base):
     __tablename__ = 'issuers'
     id = Column(Integer, primary_key=True)
@@ -23,11 +26,13 @@ class Issuer(Base):
     phone = Column(String)
     telegram_id = Column(String)
 
+#статус заявки
 class IssueStatus(enum.Enum):
     NEW = "Новый"
     IN_PROGRESS = "В работе"
     RESOLVED = "Устранено"
 
+#заявка
 class Issue(Base):
     __tablename__ = 'issues'
     id = Column(Integer, primary_key=True)
@@ -40,6 +45,21 @@ class Issue(Base):
     issuer_id = Column(Integer, ForeignKey('issuers.id'))
     issuer = relationship('Issuer')
 
+#Адреса
+class AddressClassifier(Base):
+    __tablename__ = 'address_classifier'
+    id = Column(Integer, primary_key=True)
+    parent_id_ru = Column(Integer)
+    code_ru = Column(String)
+    name_ru = Column(String)
+    parent_id_kz = Column(Integer)
+    code_kz = Column(String)
+    name_kz = Column(String)
+
+    def __repr__(self):
+        return f"<AddressClassifier(id='{self.id}', parent_id_ru='{self.parent_id_ru}', code_ru='{self.code_ru}', name_ru='{self.name_ru}', parent_id_kz='{self.parent_id_kz}', code_kz='{self.code_kz}', name_kz='{self.name_kz}')>"
+
+    
 Base.metadata.create_all(engine)
 
 def get_user_language(telegram_id):
@@ -104,3 +124,16 @@ def get_all_issues():
     issues = session.query(Issue).all()
     session.close()
     return issues
+
+def get_all_districts():
+    # Создаем сессию
+    session = Session()
+    try:
+        # Запрашиваем все районы
+        districts = session.query(District).all()
+        return [district.name for district in districts]
+    except Exception as e:
+        print(f"Error: {e}")
+        return []
+    finally:
+        session.close()

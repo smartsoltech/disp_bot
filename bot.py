@@ -12,8 +12,8 @@ load_dotenv()
 TOKEN = os.getenv("BOT_TOKEN")
 bot = telebot.TeleBot(TOKEN)
 
-user_states = []
-user_choices={}
+user_states = {}
+user_choices = {}
 
 def load_yaml_config(path):
     with open(path, 'r', encoding='utf-8') as file:
@@ -38,11 +38,14 @@ def save_user_choice(user_id, key, value):
         user_choices[user_id] = {}
     user_choices[user_id][key] = value
 
+def set_user_state(user_id, state):
+    user_states[user_id] = state
+
+def update_user_state(user_id, new_state):
+    user_states[user_id] = new_state
+
 def get_user_state(user_id):
     return user_states.get(user_id, 'start')
-
-def reset_user_state(user_id):
-    user_states.pop(user_id, None)
 
 def handle_dialog(message, step):
     user_id = message.chat.id
@@ -61,24 +64,6 @@ def handle_dialog(message, step):
             markup.add(types.InlineKeyboardButton(option, callback_data=option))
     ic(step_data)
     bot.send_message(user_id, step_data['message'], reply_markup=markup)
-
-
-def handle_dialog(message, step):
-    step_data = config['steps'][step]
-    markup = None
-
-    if 'options' in step_data:
-        markup = types.ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True)
-        for option in step_data['options']:
-            markup.add(types.KeyboardButton(option))
-
-    elif 'inline_keyboard' in step_data:
-        markup = types.InlineKeyboardMarkup()
-        for option in step_data['inline_keyboard']:
-            markup.add(types.InlineKeyboardButton(option, callback_data=option))
-            ic(option)
-
-    bot.send_message(message.chat.id, step_data['message'], reply_markup=markup)
 
 def send_light_outage_options(message):
     markup = types.InlineKeyboardMarkup()
@@ -107,14 +92,6 @@ def send_inline_keyboard(message, step_name):
 def start_message(message):
     ic(handle_dialog(message, 'start'))
 
-
-# @bot.message_handler(commands=['start'])
-# def start_message(message):
-#     user_lang = db.get_user_language(message.from_user.id)
-#     ic(user_lang)
-#     welcome_text = func.get_text(user_lang, 'welcome')
-#     bot.send_message(message.chat.id, welcome_text)
-
 @bot.message_handler(commands=['language'])
 def change_language(message):
     markup = telebot.types.ReplyKeyboardMarkup(one_time_keyboard=True)
@@ -133,14 +110,14 @@ def set_language(message):
 @bot.message_handler(commands=['new_issue'])
 def new_issue(message):
     set_user_state(message.chat.id, 'new_issue')
-    msg = bot.send_message(message.chat.id, "Опишите проблему:")
-    ic(bot.register_next_step_handler(msg, process_issue_description))
+    show_districts_keyboard(message)
 
-def process_issue_description(message):
-    issue = {'description': message.text}
-    update_user_state(message.chat.id, 'description')
-    msg = bot.send_message(message.chat.id, "Введите адрес:")
-    bot.register_next_step_handler(msg, process_issue_address, issue)
+def show_districts_keyboard(message):
+    districts = db.get_all_districts()  # Функция для получения списка районов из БД
+    markup = types.ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True)
+    for district in districts:
+        markup.add(types.KeyboardButton(district.name))
+    bot.send_message(message.chat.id, "Выберите район:", reply_markup=markup)
 
 def process_issue_address(message, issue):
     issue['address'] = message.text
@@ -217,16 +194,15 @@ def handle_export_issues(message):
 
 @bot.callback_query_handler(func=lambda call: True)
 def handle_callback(call):
-    print('принт из коллбэка')
     user_id = call.from_user.id
     callback_data = call.data
     current_step = get_user_state(user_id)
-    ic(user_id, current_step, callback_data)
-    ic(call.data)
+
     if current_step == 'start':
         if callback_data in ["Горит освещение днем", "Аварийная опора"]:
-            save_user_choice(user_id, 'problem_type', callback_data)
-            handle_dialog(call.message, 'address')
+            ic(save_user_choice(user_id, 'problem_type', callback_data))
+            ic(handle_dialog(call.message, 'address'))
+            
         elif callback_data == "Не горит освещение":
             send_light_outage_options(call.message)
             save_user_choice(user_id, 'problem_type', callback_data)
